@@ -1,0 +1,43 @@
+#!/usr/bin/env ./node_modules/.bin/coffee
+
+fs     = require 'fs'
+path   = require 'path'
+exec   = require('child_process').exec
+async  = require 'async'
+mkdirp = require 'mkdirp'
+
+if process.argv.length < 2
+  console.log "usage: #{__filename} <path>"
+  process.exit(1)
+
+DIR = process.argv[3]
+CSR = './node_modules/coffee-script-redux/bin/coffee'
+
+collectFiles = (dir, files = []) ->
+  for filename in fs.readdirSync(dir)
+    file = path.join(dir, filename)
+    stat = fs.statSync(file)
+    if stat.isDirectory()
+      collectFiles(file, files)
+    else
+      files.push(file) if path.extname(file) is '.coffee'
+  return files
+
+generateMap = (infile, callback) ->
+  outpath = path.dirname(infile).replace(DIR, 'source-maps')
+  outfile = path.join(outpath, path.basename(infile, '.coffee') + '.map')
+  console.log "#{infile} -> #{outfile}"
+  mkdirp outpath, (err) ->
+    return callback(err) if err?
+    exec "#{CSR} --source-map -i #{infile}", (err, map) ->
+      return callback(err) if err?
+      fs.writeFile(outfile, map, callback)
+
+files = collectFiles(DIR)
+console.log "generating source maps for #{files.length} files"
+async.forEach files, generateMap, (err) ->
+  if err?
+    console.log "error while generating source map: #{err}"
+    process.exit(1)
+  console.log "done!"
+  process.exit(0)
